@@ -3,15 +3,18 @@ language: go
 go:
   - 1.8.x
 
-
 install: go get -v ./...
 
-script: go build -v -o $TRAVIS_BUILD_DIR/rbacq
+before_script: chmod +x $TRAVIS_BUILD_DIR/travis-build.sh
+
+script: $TRAVIS_BUILD_DIR/travis-build.sh
 
 deploy:
   provider: releases
   api_key: $GITHUB_RELEASE_TOKEN
-  file: $TRAVIS_BUILD_DIR/rbacq
+  file:
+    - $TRAVIS_BUILD_DIR/rbacq
+    - $TRAVIS_BUILD_DIR/rbacq.exe
   skip_cleanup: true
   on:
     tags: true

@@ -1,5 +1,7 @@
 # Kubernetes RBACQ
 
+[![Build Status](https://travis-ci.org/sbueringer/kubernetes-rbacq.svg?branch=master)](https://travis-ci.org/sbueringer/kubernetes-rbacq)
+
 Query Tool for Kubernetes RBAC Objects
 
 # Query
@@ -31,9 +33,7 @@ rbacq get subjects
 
 rbac get subject <regexp>
 
-
-TODO get rights of current User (first ask what user/group it is then get the roles & rights)
-TODO github build
+TODO verify functionality, create documentation
 
 # Check Rights for user / current user
 
