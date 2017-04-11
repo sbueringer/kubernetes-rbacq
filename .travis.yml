@@ -3,6 +3,19 @@ language: go
 go:
   - 1.8.x
 
+
+env:
+    global:
+        - GITHUB_RELEASE_BINARY="kubernetes-rbaq"
+
 install: go get -v ./...
 
-script: go build
+script: go build -v
+
+deploy:
+  provider: releases
+  api_key: $GITHUB_RELEASE_TOKEN
+  file: $GITHUB_RELEASE_BINARY
+  skip_cleanup: true
+  on:
+    tags: true
