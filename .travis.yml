@@ -3,4 +3,6 @@ language: go
 go:
   - 1.8.x
 
-script: true
+install: go get -v ./...
+
+script: go build
