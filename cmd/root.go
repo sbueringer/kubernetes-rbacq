@@ -25,7 +25,7 @@ import (
 var RootCmd = &cobra.Command{
 	Use:   "rbacq",
 	Short: "rbacq simplifies querying the Kubernetes RBAC API",
-	Long: `rbacq simplifies querying the Kubernetes RBAC API`,
+	Long:  `rbacq simplifies querying the Kubernetes RBAC API`,
 }
 
 func Execute() {
@@ -38,7 +38,7 @@ func Execute() {
 func init() {
 	cobra.OnInitialize(query.InitKubeCfg)
 
-	RootCmd.PersistentFlags().StringVarP(&query.KubeCfgFile, "kubeconfig", "k", os.Getenv("HOME")+"\\.kube\\config", "Path to the kubeconfig file to use for CLI requests")
+	RootCmd.PersistentFlags().StringVarP(&query.KubeCfgFile, "kubeconfig", "k", fmt.Sprintf("%s%s.kube%sconfig",os.Getenv("HOME"),string(os.PathSeparator), string(os.PathSeparator)), "Path to the kubeconfig file to use for CLI requests")
 	RootCmd.PersistentFlags().StringVarP(&query.Namespace, "namespace", "n", "default", "Specifies the Namespace in which to query")
 	RootCmd.PersistentFlags().BoolVarP(&query.AllNamespaces, "all-namespaces", "a", false, "Specifies that all Namespaces should be queried (default \"false\")")
 	RootCmd.PersistentFlags().BoolVarP(&query.System, "system", "s", false, "Show also System Objects (default \"false\")")
