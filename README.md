@@ -131,4 +131,3 @@ Rights defined in ClusterRoles & Roles
     namespaces: [get]: [User:system:kube-controller-manager]
 
 ```
-TODO https://github.com/dwyl/repo-badges
