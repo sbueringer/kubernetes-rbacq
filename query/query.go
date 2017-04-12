@@ -180,6 +180,11 @@ func getSubjectsForClusterRole(role v1beta1.ClusterRole) []v1beta1.Subject {
 			subjects = append(subjects, clusterRoleBinding.Subjects...)
 		}
 	}
+	for _, roleBinding := range roleBindingList.Items {
+		if "ClusterRole" == roleBinding.RoleRef.Kind && role.Name == roleBinding.RoleRef.Name {
+			subjects = append(subjects, roleBinding.Subjects...)
+		}
+	}
 	return subjects
 }
 func getSubjectsForRole(role v1beta1.Role) []v1beta1.Subject {
