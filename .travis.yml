@@ -15,6 +15,7 @@ deploy:
   file:
     - $TRAVIS_BUILD_DIR/rbacq
     - $TRAVIS_BUILD_DIR/rbacq.exe
+  overwrite: true
   skip_cleanup: true
   on:
     tags: true
