@@ -101,16 +101,15 @@ func GetRights(args []string) {
 	if ClusterWide {
 		for _, clusterRole := range clusterRoles {
 			subjects := getSubjectsForClusterRole(clusterRole)
-			if len(subjects) > 0 {
-				for _, policyRule := range clusterRole.Rules {
-					for _, resource := range policyRule.Resources {
-						addPolicyRuleSubjectToMap(&resourceKeyMap, &policyRuleSubjectMap, resource, policyRule.Verbs, subjects)
-					}
-					for _, nonResourceURLs := range policyRule.NonResourceURLs {
-						addPolicyRuleSubjectToMap(&resourceKeyMap, &policyRuleSubjectMap, nonResourceURLs, policyRule.Verbs, subjects)
-					}
+			for _, policyRule := range clusterRole.Rules {
+				for _, resource := range policyRule.Resources {
+					addPolicyRuleSubjectToMap(&resourceKeyMap, &policyRuleSubjectMap, resource, policyRule.Verbs, subjects)
 				}
-			} else {
+				for _, nonResourceURLs := range policyRule.NonResourceURLs {
+					addPolicyRuleSubjectToMap(&resourceKeyMap, &policyRuleSubjectMap, nonResourceURLs, policyRule.Verbs, subjects)
+				}
+			}
+			if len(subjects) == 0 {
 				logger.Debug.Printf("Unmapped Roles: %s", clusterRole.Name)
 			}
 
@@ -119,14 +118,14 @@ func GetRights(args []string) {
 	for _, role := range roles {
 		subjects := getSubjectsForRole(role)
 		for _, policyRule := range role.Rules {
-			if len(subjects) > 0 {
-				for _, resource := range policyRule.Resources {
-					addPolicyRuleSubjectToMap(&resourceKeyMap, &policyRuleSubjectMap, resource, policyRule.Verbs, subjects)
-				}
-				for _, nonResourceURLs := range policyRule.NonResourceURLs {
-					addPolicyRuleSubjectToMap(&resourceKeyMap, &policyRuleSubjectMap, nonResourceURLs, policyRule.Verbs, subjects)
-				}
-			} else {
+
+			for _, resource := range policyRule.Resources {
+				addPolicyRuleSubjectToMap(&resourceKeyMap, &policyRuleSubjectMap, resource, policyRule.Verbs, subjects)
+			}
+			for _, nonResourceURLs := range policyRule.NonResourceURLs {
+				addPolicyRuleSubjectToMap(&resourceKeyMap, &policyRuleSubjectMap, nonResourceURLs, policyRule.Verbs, subjects)
+			}
+			if len(subjects) == 0 {
 				logger.Debug.Printf("Unmapped Roles: %s", role.Name)
 			}
 		}
@@ -202,6 +201,7 @@ func GetSubjects(args []string) {
 	var err error
 	clusterRoleList, err = clientset.RbacV1beta1Client.ClusterRoles().List(v1.ListOptions{})
 	logger.HandleError(err)
+	logger.Debug.Print(clusterRoleList)
 
 	if AllNamespaces {
 		roleList, err = clientset.RbacV1beta1Client.Roles("").List(v1.ListOptions{})
@@ -210,6 +210,7 @@ func GetSubjects(args []string) {
 		roleList, err = clientset.RbacV1beta1Client.Roles(Namespace).List(v1.ListOptions{})
 		logger.HandleError(err)
 	}
+	logger.Debug.Print(roleList)
 
 	if !jsonPathSet {
 		if ClusterWide {
@@ -223,6 +224,7 @@ func GetSubjects(args []string) {
 		var clusterSubjectRoleRefMap map[v1beta1.Subject][]v1beta1.RoleRef = make(map[v1beta1.Subject][]v1beta1.RoleRef)
 		clusterRoleBindingList, err := clientset.RbacV1beta1Client.ClusterRoleBindings().List(v1.ListOptions{})
 		logger.HandleError(err)
+		logger.Debug.Print(clusterRoleBindingList)
 
 		clusterRoleBindings := clusterRoleBindingList.Items
 		if !System {
@@ -243,12 +245,13 @@ func GetSubjects(args []string) {
 		if !jsonPathSet {
 			logger.Return.Println("\tCluster-wide:")
 		}
+		logger.Debug.Print(clusterSubjectRoleRefMap)
+
 		printSubjects(clusterSubjectRoleRefMap, "User")
 		printSubjects(clusterSubjectRoleRefMap, "Group")
 		printSubjects(clusterSubjectRoleRefMap, "ServiceAccount")
 	}
 
-	var namespaceSubjectRoleRefMap map[v1beta1.Subject][]v1beta1.RoleRef = make(map[v1beta1.Subject][]v1beta1.RoleRef)
 	var roleBindingList *v1beta1.RoleBindingList
 	if AllNamespaces {
 		roleBindingList, err = clientset.RbacV1beta1Client.RoleBindings("").List(v1.ListOptions{})
@@ -257,12 +260,28 @@ func GetSubjects(args []string) {
 		roleBindingList, err = clientset.RbacV1beta1Client.RoleBindings(Namespace).List(v1.ListOptions{})
 		logger.HandleError(err)
 	}
+	logger.Debug.Print(roleBindingList)
 
 	roleBindings := roleBindingList.Items
 	if !System {
 		// filter for System (filter System Subjects)
 		roleBindings = util.RoleBindingFilter(roleBindings, func(r v1beta1.RoleBinding) bool { return !strings.HasPrefix(r.Name, "system:") })
 	}
+
+	if AllNamespaces {
+		for _, namespace := range getNamespaces(roleBindings){
+			roleBindingsOfNamespace := util.RoleBindingFilter(roleBindings, func(r v1beta1.RoleBinding) bool { return r.Namespace == namespace})
+			printRoleBindings(roleBindingsOfNamespace, subjectFilter, namespace)
+		}
+
+	} else {
+		printRoleBindings(roleBindings, subjectFilter, Namespace)
+
+	}
+}
+
+func printRoleBindings(roleBindings []v1beta1.RoleBinding, subjectFilter *regexp.Regexp, namespace string) {
+	var namespaceSubjectRoleRefMap map[v1beta1.Subject][]v1beta1.RoleRef = make(map[v1beta1.Subject][]v1beta1.RoleRef)
 	for _, roleBinding := range roleBindings {
 		for _, subject := range roleBinding.Subjects {
 			if subjectFilter == nil || subjectFilter.MatchString(getFullSubjectName(subject)) {
@@ -274,14 +293,16 @@ func GetSubjects(args []string) {
 			}
 		}
 	}
+
 	if !jsonPathSet {
-		logger.Return.Printf("\tNamespace: %s", Namespace)
+		logger.Return.Printf("\tNamespace: %s", namespace)
 	}
+	logger.Debug.Print(namespaceSubjectRoleRefMap)
+
 	printSubjects(namespaceSubjectRoleRefMap, "User")
 	printSubjects(namespaceSubjectRoleRefMap, "Group")
 	printSubjects(namespaceSubjectRoleRefMap, "ServiceAccount")
 }
-
 func printSubjects(subjectRoleRefMap map[v1beta1.Subject][]v1beta1.RoleRef, kind string) {
 	var jsonPath *jsonpath.JSONPath
 	if jsonPathSet {
@@ -331,6 +352,7 @@ func getFullSubjectName(subject v1beta1.Subject) (string) {
 	}
 	return subject.Kind + ":" + subject.Name
 }
+
 func getPolicyRules(roleRef *v1beta1.RoleRef) ([] v1beta1.PolicyRule) {
 	switch roleRef.Kind {
 	case "ClusterRole":
@@ -348,7 +370,6 @@ func getPolicyRules(roleRef *v1beta1.RoleRef) ([] v1beta1.PolicyRule) {
 	}
 	return nil
 }
-
 func makeSubjectsDistinct(subjects []v1beta1.Subject) []v1beta1.Subject {
 	var newSubjects []v1beta1.Subject
 	for _, subject := range subjects {
@@ -389,4 +410,14 @@ func appendRoleRefDistinct(roleRefs []v1beta1.RoleRef, roleRefToAdd v1beta1.Role
 		roleRefs = append(roleRefs, roleRefToAdd)
 	}
 	return roleRefs
+}
+
+func getNamespaces(roleBindings []v1beta1.RoleBinding) ([]string){
+	var namespaces []string
+	for _, roleBinding := range roleBindings {
+		if !util.Contains(namespaces, roleBinding.Namespace){
+			namespaces = append(namespaces, roleBinding.Namespace)
+		}
+	}
+	return namespaces
 }

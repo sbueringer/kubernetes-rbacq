@@ -47,7 +47,7 @@ var getCmd = &cobra.Command{
 }
 
 func printUsage(cmd *cobra.Command) {
-	cmd.Printf("You must specify the type of resource to get. Valid resource types are:\n\n")
+	cmd.Printf("You must specify the type of resource to get. Valid resource types are:\n")
 	cmd.Println("\t* subjects (aka 'sub')")
 	cmd.Println("\t* rights (aka 'r')")
 }
