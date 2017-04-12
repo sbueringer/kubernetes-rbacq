@@ -25,7 +25,7 @@ import (
 var RootCmd = &cobra.Command{
 	Use:   "rbacq",
 	Short: "rbacq simplifies querying the Kubernetes RBAC API",
-	Long: `rbacq simplifies querying the Kubernetes RBAC API (long)`,
+	Long: `rbacq simplifies querying the Kubernetes RBAC API`,
 }
 
 func Execute() {
@@ -40,9 +40,7 @@ func init() {
 
 	RootCmd.PersistentFlags().StringVarP(&query.KubeCfgFile, "kubeconfig", "k", os.Getenv("HOME")+"\\.kube\\config", "Path to the kubeconfig file to use for CLI requests")
 	RootCmd.PersistentFlags().StringVarP(&query.Namespace, "namespace", "n", "default", "Specifies the Namespace in which to query")
-	//TODO Implement
-	RootCmd.PersistentFlags().BoolVarP(&query.AllNamespaces, "all-namespaces", "a", false, "Specifies that all namespaces should be queried (default \"false\")")
-	RootCmd.PersistentFlags().BoolVarP(&query.System, "system", "s", false, "Show also System ServiceAccounts & Roles (default \"false\")")
+	RootCmd.PersistentFlags().BoolVarP(&query.AllNamespaces, "all-namespaces", "a", false, "Specifies that all Namespaces should be queried (default \"false\")")
+	RootCmd.PersistentFlags().BoolVarP(&query.System, "system", "s", false, "Show also System Objects (default \"false\")")
 	RootCmd.PersistentFlags().BoolVarP(&query.ClusterWide, "cluster-wide", "c", false, "Search cluster-wide (which includes ClusterRoles & ClusterRolebindings)")
-	RootCmd.PersistentFlags().StringVarP(&query.Output, "output", "o", "", "Set jsonpath e.g. with -o jsonpath='{.kind}:{.Name}'")
 }

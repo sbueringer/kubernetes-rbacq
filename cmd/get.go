@@ -20,9 +20,9 @@ import (
 )
 
 var getCmd = &cobra.Command{
-	Use:        "get",
+	Use:        "get [RESOURCE-TYPE]",
 	Short:      "Displays one or many resources",
-	Long:       `Displays one or many resources (long)`,
+	Long:       `Displays one or many resources`,
 	ValidArgs:  []string{"subject", "right"},
 	ArgAliases: []string{"s", "subjects", "r", "rights"},
 	Run: func(cmd *cobra.Command, args []string) {
@@ -43,7 +43,6 @@ var getCmd = &cobra.Command{
 		} else {
 			printUsage(cmd)
 		}
-
 	},
 }
 
@@ -55,4 +54,5 @@ func printUsage(cmd *cobra.Command) {
 
 func init() {
 	RootCmd.AddCommand(getCmd)
+	getCmd.PersistentFlags().StringVarP(&query.Output, "output", "o", "", "Set jsonpath e.g. with -o jsonpath='{.kind}:{.Name}'")
 }

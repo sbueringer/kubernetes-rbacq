@@ -1,6 +1,12 @@
 package query
 
 import (
+	"os"
+	"strings"
+	"regexp"
+	"fmt"
+	"sort"
+
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"k8s.io/client-go/kubernetes"
@@ -11,11 +17,6 @@ import (
 
 	"github.com/sbueringer/kubernetes-rbacq/logger"
 	"github.com/sbueringer/kubernetes-rbacq/util"
-	"os"
-	"strings"
-	"regexp"
-	"fmt"
-	"sort"
 )
 
 var KubeCfgFile string
@@ -56,14 +57,24 @@ func GetRights(args []string) {
 	clusterRoleList, err := clientset.RbacV1beta1Client.ClusterRoles().List(v1.ListOptions{})
 	logger.HandleError(err)
 
-	roleList, err = clientset.RbacV1beta1Client.Roles(Namespace).List(v1.ListOptions{})
-	logger.HandleError(err)
+	if AllNamespaces {
+		roleList, err = clientset.RbacV1beta1Client.Roles("").List(v1.ListOptions{})
+		logger.HandleError(err)
+	} else {
+		roleList, err = clientset.RbacV1beta1Client.Roles(Namespace).List(v1.ListOptions{})
+		logger.HandleError(err)
+	}
 
 	clusterRoleBindingList, err = clientset.RbacV1beta1Client.ClusterRoleBindings().List(v1.ListOptions{})
 	logger.HandleError(err)
 
-	roleBindingList, err = clientset.RbacV1beta1Client.RoleBindings(Namespace).List(v1.ListOptions{})
-	logger.HandleError(err)
+	if AllNamespaces {
+		roleBindingList, err = clientset.RbacV1beta1Client.RoleBindings("").List(v1.ListOptions{})
+		logger.HandleError(err)
+	} else {
+		roleBindingList, err = clientset.RbacV1beta1Client.RoleBindings(Namespace).List(v1.ListOptions{})
+		logger.HandleError(err)
+	}
 
 	clusterRoles := clusterRoleList.Items
 	if !System {
@@ -86,16 +97,17 @@ func GetRights(args []string) {
 	}
 
 	var policyRuleSubjectMap map[string][]v1beta1.Subject = make(map[string][]v1beta1.Subject)
+	var resourceKeyMap map[string][]string = make(map[string][]string)
 	if ClusterWide {
 		for _, clusterRole := range clusterRoles {
 			subjects := getSubjectsForClusterRole(clusterRole)
 			if len(subjects) > 0 {
 				for _, policyRule := range clusterRole.Rules {
 					for _, resource := range policyRule.Resources {
-						addPolicyRuleSubjectToMap(&policyRuleSubjectMap, resource, policyRule.Verbs, subjects)
+						addPolicyRuleSubjectToMap(&resourceKeyMap, &policyRuleSubjectMap, resource, policyRule.Verbs, subjects)
 					}
 					for _, nonResourceURLs := range policyRule.NonResourceURLs {
-						addPolicyRuleSubjectToMap(&policyRuleSubjectMap, nonResourceURLs, policyRule.Verbs, subjects)
+						addPolicyRuleSubjectToMap(&resourceKeyMap, &policyRuleSubjectMap, nonResourceURLs, policyRule.Verbs, subjects)
 					}
 				}
 			} else {
@@ -109,40 +121,60 @@ func GetRights(args []string) {
 		for _, policyRule := range role.Rules {
 			if len(subjects) > 0 {
 				for _, resource := range policyRule.Resources {
-					addPolicyRuleSubjectToMap(&policyRuleSubjectMap, resource, policyRule.Verbs, subjects)
+					addPolicyRuleSubjectToMap(&resourceKeyMap, &policyRuleSubjectMap, resource, policyRule.Verbs, subjects)
 				}
 				for _, nonResourceURLs := range policyRule.NonResourceURLs {
-					addPolicyRuleSubjectToMap(&policyRuleSubjectMap, nonResourceURLs, policyRule.Verbs, subjects)
+					addPolicyRuleSubjectToMap(&resourceKeyMap, &policyRuleSubjectMap, nonResourceURLs, policyRule.Verbs, subjects)
 				}
 			} else {
 				logger.Debug.Printf("Unmapped Roles: %s", role.Name)
 			}
 		}
 	}
-	// To store the keys in slice in sorted order
-	var keys []string
-	for k := range policyRuleSubjectMap {
-		keys = append(keys, k)
+	// To store the resources in slice in sorted order
+	var resources []string
+	for k := range resourceKeyMap {
+		resources = append(resources, k)
 	}
-	sort.Strings(keys)
+	sort.Strings(resources)
 
-	for _, rights := range keys {
-		if rightsFilter == nil || rightsFilter.MatchString(rights) {
-			var subjects []string = []string{}
-			for _, subject := range policyRuleSubjectMap[rights] {
-				subjects = append(subjects, getFullSubjectName(subject))
+	for _, resource := range resources {
+		rights := resourceKeyMap[resource]
+		sort.Strings(rights)
+		var output string
+		for _, right := range rights {
+			if rightsFilter == nil || rightsFilter.MatchString(right) {
+				var subjects []string = []string{}
+				for _, subject := range policyRuleSubjectMap[right] {
+					subjects = append(subjects, getFullSubjectName(subject))
+				}
+				output += fmt.Sprintf("\t\t%s: %v\n", strings.TrimPrefix(right, resource), subjects)
 			}
-			logger.Return.Printf("\t%s: %v", rights, subjects)
+		}
+		if output != "" {
+			logger.Return.Printf("\t%s:", resource)
+			logger.Return.Print(output)
 		}
 	}
 }
-func addPolicyRuleSubjectToMap(policyRuleSubjectMap *map[string][]v1beta1.Subject, resource string, verbs []string, subjects []v1beta1.Subject) {
-	key := fmt.Sprintf("%s: %v", resource, verbs)
-	if subjects, ok := (*policyRuleSubjectMap)[key]; ok {
-		(*policyRuleSubjectMap)[key] = append(subjects, subjects...)
+func addPolicyRuleSubjectToMap(resourceKeyMap *map[string][]string, policyRuleSubjectMap *map[string][]v1beta1.Subject, resource string, verbs []string, subjects []v1beta1.Subject) {
+	key := fmt.Sprintf("%s%v", resource, verbs)
+	if keyArray, ok := (*resourceKeyMap)[resource]; ok {
+		if !util.Contains(keyArray, key) {
+			(*resourceKeyMap)[resource] = append(keyArray, key)
+		}
+	} else {
+		(*resourceKeyMap)[resource] = []string{key}
 	}
-	(*policyRuleSubjectMap)[key] = subjects
+
+	if subjectsArray, ok := (*policyRuleSubjectMap)[key]; ok {
+
+		(*policyRuleSubjectMap)[key] = appendSubjectsDistinct(subjectsArray, subjects)
+	} else {
+		(*policyRuleSubjectMap)[key] = makeSubjectsDistinct(subjects)
+	}
 }
+
 func getSubjectsForClusterRole(role v1beta1.ClusterRole) []v1beta1.Subject {
 	var subjects []v1beta1.Subject = []v1beta1.Subject{}
 	for _, clusterRoleBinding := range clusterRoleBindingList.Items {
@@ -152,7 +184,6 @@ func getSubjectsForClusterRole(role v1beta1.ClusterRole) []v1beta1.Subject {
 	}
 	return subjects
 }
-
 func getSubjectsForRole(role v1beta1.Role) []v1beta1.Subject {
 	var subjects []v1beta1.Subject = []v1beta1.Subject{}
 	for _, roleBinding := range roleBindingList.Items {
@@ -173,8 +204,13 @@ func GetSubjects(args []string) {
 	clusterRoleList, err = clientset.RbacV1beta1Client.ClusterRoles().List(v1.ListOptions{})
 	logger.HandleError(err)
 
-	roleList, err = clientset.RbacV1beta1Client.Roles(Namespace).List(v1.ListOptions{})
-	logger.HandleError(err)
+	if AllNamespaces {
+		roleList, err = clientset.RbacV1beta1Client.Roles("").List(v1.ListOptions{})
+		logger.HandleError(err)
+	} else {
+		roleList, err = clientset.RbacV1beta1Client.Roles(Namespace).List(v1.ListOptions{})
+		logger.HandleError(err)
+	}
 
 	if !jsonPathSet {
 		if ClusterWide {
@@ -210,8 +246,14 @@ func GetSubjects(args []string) {
 	}
 
 	var namespaceSubjectRoleRefMap map[v1beta1.Subject]v1beta1.RoleRef = make(map[v1beta1.Subject]v1beta1.RoleRef)
-	roleBindingList, err := clientset.RbacV1beta1Client.RoleBindings(Namespace).List(v1.ListOptions{})
-	logger.HandleError(err)
+	var roleBindingList *v1beta1.RoleBindingList
+	if AllNamespaces {
+		roleBindingList, err = clientset.RbacV1beta1Client.RoleBindings("").List(v1.ListOptions{})
+		logger.HandleError(err)
+	} else {
+		roleBindingList, err = clientset.RbacV1beta1Client.RoleBindings(Namespace).List(v1.ListOptions{})
+		logger.HandleError(err)
+	}
 
 	roleBindings := roleBindingList.Items
 	if !System {
@@ -272,13 +314,13 @@ func printSubject(subject v1beta1.Subject, roleRef v1beta1.RoleRef) {
 		}
 	}
 }
+
 func getFullSubjectName(subject v1beta1.Subject) (string) {
 	if subject.Namespace != "" {
 		return subject.Kind + ":" + subject.Namespace + ":" + subject.Name
 	}
 	return subject.Kind + ":" + subject.Name
 }
-
 func getPolicyRules(roleRef *v1beta1.RoleRef) ([] v1beta1.PolicyRule) {
 	switch roleRef.Kind {
 	case "ClusterRole":
@@ -295,4 +337,33 @@ func getPolicyRules(roleRef *v1beta1.RoleRef) ([] v1beta1.PolicyRule) {
 		}
 	}
 	return nil
+}
+
+func makeSubjectsDistinct(subjects []v1beta1.Subject) []v1beta1.Subject {
+	var newSubjects []v1beta1.Subject
+	for _, subject := range subjects {
+		newSubjects = appendSubjectsDistinct(newSubjects , []v1beta1.Subject{subject})
+	}
+	return newSubjects
+}
+
+func appendSubjectsDistinct(subjects []v1beta1.Subject, subjectsToAdd []v1beta1.Subject) []v1beta1.Subject {
+	for _, subjectToAdd := range subjectsToAdd {
+		alreadyContained := false
+		for _, subject := range subjects {
+			if subjectToAdd.Kind == "ServiceAccount" {
+				if subject.Kind == subjectToAdd.Kind && subject.Name == subjectToAdd.Name && subject.Namespace == subjectToAdd.Namespace {
+					alreadyContained = true
+				}
+			} else {
+				if subject.Kind == subjectToAdd.Kind && subject.Name == subjectToAdd.Name {
+					alreadyContained = true
+				}
+			}
+		}
+		if !alreadyContained {
+			subjects = append(subjects, subjectToAdd)
+		}
+	}
+	return subjects
 }
