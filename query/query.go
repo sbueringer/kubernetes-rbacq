@@ -168,7 +168,6 @@ func addPolicyRuleSubjectToMap(resourceKeyMap *map[string][]string, policyRuleSu
 	}
 
 	if subjectsArray, ok := (*policyRuleSubjectMap)[key]; ok {
-
 		(*policyRuleSubjectMap)[key] = appendSubjectsDistinct(subjectsArray, subjects)
 	} else {
 		(*policyRuleSubjectMap)[key] = makeSubjectsDistinct(subjects)
@@ -221,7 +220,7 @@ func GetSubjects(args []string) {
 	}
 
 	if ClusterWide {
-		var clusterSubjectRoleRefMap map[v1beta1.Subject]v1beta1.RoleRef = make(map[v1beta1.Subject]v1beta1.RoleRef)
+		var clusterSubjectRoleRefMap map[v1beta1.Subject][]v1beta1.RoleRef = make(map[v1beta1.Subject][]v1beta1.RoleRef)
 		clusterRoleBindingList, err := clientset.RbacV1beta1Client.ClusterRoleBindings().List(v1.ListOptions{})
 		logger.HandleError(err)
 
@@ -233,7 +232,11 @@ func GetSubjects(args []string) {
 		for _, clusterRoleBinding := range clusterRoleBindings {
 			for _, subject := range clusterRoleBinding.Subjects {
 				if subjectFilter == nil || subjectFilter.MatchString(getFullSubjectName(subject)) {
-					clusterSubjectRoleRefMap[subject] = clusterRoleBinding.RoleRef
+					if roleRefArray, ok := clusterSubjectRoleRefMap[subject]; ok {
+						clusterSubjectRoleRefMap[subject] = appendRoleRefDistinct(roleRefArray, clusterRoleBinding.RoleRef)
+					} else {
+						clusterSubjectRoleRefMap[subject] = []v1beta1.RoleRef{clusterRoleBinding.RoleRef}
+					}
 				}
 			}
 		}
@@ -245,7 +248,7 @@ func GetSubjects(args []string) {
 		printSubjects(clusterSubjectRoleRefMap, "ServiceAccount")
 	}
 
-	var namespaceSubjectRoleRefMap map[v1beta1.Subject]v1beta1.RoleRef = make(map[v1beta1.Subject]v1beta1.RoleRef)
+	var namespaceSubjectRoleRefMap map[v1beta1.Subject][]v1beta1.RoleRef = make(map[v1beta1.Subject][]v1beta1.RoleRef)
 	var roleBindingList *v1beta1.RoleBindingList
 	if AllNamespaces {
 		roleBindingList, err = clientset.RbacV1beta1Client.RoleBindings("").List(v1.ListOptions{})
@@ -263,7 +266,11 @@ func GetSubjects(args []string) {
 	for _, roleBinding := range roleBindings {
 		for _, subject := range roleBinding.Subjects {
 			if subjectFilter == nil || subjectFilter.MatchString(getFullSubjectName(subject)) {
-				namespaceSubjectRoleRefMap[subject] = roleBinding.RoleRef
+				if roleRefArray, ok := namespaceSubjectRoleRefMap[subject]; ok {
+					namespaceSubjectRoleRefMap[subject] = appendRoleRefDistinct(roleRefArray, roleBinding.RoleRef)
+				} else {
+					namespaceSubjectRoleRefMap[subject] = []v1beta1.RoleRef{roleBinding.RoleRef}
+				}
 			}
 		}
 	}
@@ -275,7 +282,7 @@ func GetSubjects(args []string) {
 	printSubjects(namespaceSubjectRoleRefMap, "ServiceAccount")
 }
 
-func printSubjects(subjectRoleRefMap map[v1beta1.Subject]v1beta1.RoleRef, kind string) {
+func printSubjects(subjectRoleRefMap map[v1beta1.Subject][]v1beta1.RoleRef, kind string) {
 	var jsonPath *jsonpath.JSONPath
 	if jsonPathSet {
 		jsonPath = jsonpath.New("jsonpath")
@@ -286,30 +293,33 @@ func printSubjects(subjectRoleRefMap map[v1beta1.Subject]v1beta1.RoleRef, kind s
 	}
 	// filter for Kind
 	subjectRoleRefMap = util.SubjectRoleRefFilter(subjectRoleRefMap, func(s v1beta1.Subject) bool { return s.Kind == kind })
-	for subject, roleRef := range subjectRoleRefMap {
+	for subject, roleRefs := range subjectRoleRefMap {
 		if jsonPathSet {
 			jsonPath.Execute(os.Stdout, subject)
 			os.Stdout.WriteString("\n")
 		} else {
-			printSubject(subject, roleRef)
+			printSubject(subject, roleRefs)
 		}
 	}
 }
 
-func printSubject(subject v1beta1.Subject, roleRef v1beta1.RoleRef) {
+func printSubject(subject v1beta1.Subject, roleRefs []v1beta1.RoleRef) {
 	// print Subject
 	logger.Return.Println("\t\t" + getFullSubjectName(subject))
-	// print RoleRelf
-	logger.Return.Println("\t\t\t" + roleRef.Kind + ": " + roleRef.Name)
-	// print Role Details
-	policyRules := getPolicyRules(&roleRef)
-	if policyRules != nil {
-		for _, policyRule := range policyRules {
-			for _, resource := range policyRule.Resources {
-				logger.Return.Printf("\t\t\t\t %s: %v", resource, policyRule.Verbs)
-			}
-			for _, nonResourceURLs := range policyRule.NonResourceURLs {
-				logger.Return.Printf("\t\t\t\t %s: %v", nonResourceURLs, policyRule.Verbs)
+
+	for _, roleRef := range roleRefs {
+		// print RoleRelf
+		logger.Return.Println("\t\t\t" + roleRef.Kind + ": " + roleRef.Name)
+		// print Role Details
+		policyRules := getPolicyRules(&roleRef)
+		if policyRules != nil {
+			for _, policyRule := range policyRules {
+				for _, resource := range policyRule.Resources {
+					logger.Return.Printf("\t\t\t\t %s: %v", resource, policyRule.Verbs)
+				}
+				for _, nonResourceURLs := range policyRule.NonResourceURLs {
+					logger.Return.Printf("\t\t\t\t %s: %v", nonResourceURLs, policyRule.Verbs)
+				}
 			}
 		}
 	}
@@ -342,7 +352,7 @@ func getPolicyRules(roleRef *v1beta1.RoleRef) ([] v1beta1.PolicyRule) {
 func makeSubjectsDistinct(subjects []v1beta1.Subject) []v1beta1.Subject {
 	var newSubjects []v1beta1.Subject
 	for _, subject := range subjects {
-		newSubjects = appendSubjectsDistinct(newSubjects , []v1beta1.Subject{subject})
+		newSubjects = appendSubjectsDistinct(newSubjects, []v1beta1.Subject{subject})
 	}
 	return newSubjects
 }
@@ -366,4 +376,17 @@ func appendSubjectsDistinct(subjects []v1beta1.Subject, subjectsToAdd []v1beta1.
 		}
 	}
 	return subjects
+}
+
+func appendRoleRefDistinct(roleRefs []v1beta1.RoleRef, roleRefToAdd v1beta1.RoleRef) []v1beta1.RoleRef {
+	alreadyContained := false
+	for _, roleRef := range roleRefs {
+		if roleRef.Kind == roleRefToAdd.Kind && roleRef.Name == roleRefToAdd.Name {
+			alreadyContained = true
+		}
+	}
+	if !alreadyContained {
+		roleRefs = append(roleRefs, roleRefToAdd)
+	}
+	return roleRefs
 }

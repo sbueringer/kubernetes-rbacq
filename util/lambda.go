@@ -93,8 +93,8 @@ func ClusterRoleBindingFilter(vs []v1beta1.ClusterRoleBinding, f func(subject v1
 }
 
 //Returns a new slice containing all strings in the slice that satisfy the predicate f.
-func SubjectRoleRefFilter(vs map[v1beta1.Subject]v1beta1.RoleRef, f func(subject v1beta1.Subject) bool) map[v1beta1.Subject]v1beta1.RoleRef {
-	vsf := make(map[v1beta1.Subject]v1beta1.RoleRef, 0)
+func SubjectRoleRefFilter(vs map[v1beta1.Subject][]v1beta1.RoleRef, f func(subject v1beta1.Subject) bool) map[v1beta1.Subject][]v1beta1.RoleRef {
+	vsf := make(map[v1beta1.Subject][]v1beta1.RoleRef, 0)
 	for k, v := range vs {
 		if f(k) {
 			vsf[k] = v
