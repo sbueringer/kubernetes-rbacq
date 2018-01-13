@@ -5,9 +5,9 @@ go:
 
 install: go get -v ./...
 
-before_script: chmod +x $TRAVIS_BUILD_DIR/travis-build.sh
+before_script: chmod +x $TRAVIS_BUILD_DIR/build.sh
 
-script: $TRAVIS_BUILD_DIR/travis-build.sh
+script: $TRAVIS_BUILD_DIR/build.sh
 
 deploy:
   provider: releases

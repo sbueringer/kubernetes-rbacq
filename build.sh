@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+WORKDIR=`echo $0 | sed -e s/build.sh//`
+cd ${WORKDIR}
+
 export GOOS=linux
 export GOARCH=amd64
 
